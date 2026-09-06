@@ -1,4 +1,5 @@
-//! `items` and `donate` commands.
+//! `items`, `donate`, and `tx submit`/`tx serialize`/`tx deserialize`
+//! commands.
 //!
 //! `Config::load` resolves `~/.config/lineage/config.toml` via
 //! `dirs::config_dir`, which in turn follows `$HOME`. Pointing `HOME` at a
@@ -135,4 +136,126 @@ fn donate_without_confirmation_is_denied() {
         .args(["--json", "donate", "some-target"])
         .assert()
         .code(3);
+}
+
+#[tokio::test]
+async fn tx_submit_submits_a_single_transaction_wrapped_in_an_array() {
+    let server = MockServer::start().await;
+    let tx = serde_json::json!({"hash": "tx-1"});
+    Mock::given(method("POST"))
+        .and(path("/v1/transactions"))
+        .and(body_json(serde_json::json!({"transactions": [tx]})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"submitted": 1})))
+        .mount(&server)
+        .await;
+
+    let home = tempfile::tempdir().expect("tempdir");
+    write_config(home.path(), "");
+    let file = write_json_file(home.path(), "tx.json", &tx);
+
+    let output = Command::cargo_bin("lineage")
+        .unwrap()
+        .env("HOME", home.path())
+        .args([
+            "--json",
+            "--network",
+            &server.uri(),
+            "tx",
+            "submit",
+            file.to_str().unwrap(),
+            "--yes",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout["ok"], true);
+    assert_eq!(stdout["data"]["submitted"], 1);
+}
+
+#[test]
+fn tx_submit_without_confirmation_is_denied() {
+    let home = tempfile::tempdir().expect("tempdir");
+    write_config(home.path(), "");
+    let file = write_json_file(home.path(), "tx.json", &serde_json::json!({"hash": "tx-1"}));
+
+    Command::cargo_bin("lineage")
+        .unwrap()
+        .env("HOME", home.path())
+        .args(["--json", "tx", "submit", file.to_str().unwrap()])
+        .assert()
+        .code(3);
+}
+
+#[tokio::test]
+async fn tx_serialize_needs_no_confirmation() {
+    let server = MockServer::start().await;
+    let txs = serde_json::json!([{"hash": "tx-1"}]);
+    Mock::given(method("POST"))
+        .and(path("/v1/transactions:serialize"))
+        .and(body_json(&txs))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"hex": ["deadbeef"]})))
+        .mount(&server)
+        .await;
+
+    let home = tempfile::tempdir().expect("tempdir");
+    write_config(home.path(), "");
+    let file = write_json_file(home.path(), "txs.json", &txs);
+
+    let output = Command::cargo_bin("lineage")
+        .unwrap()
+        .env("HOME", home.path())
+        .args([
+            "--json",
+            "--network",
+            &server.uri(),
+            "tx",
+            "serialize",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout["ok"], true);
+    assert_eq!(stdout["data"]["hex"][0], "deadbeef");
+}
+
+#[tokio::test]
+async fn tx_deserialize_needs_no_confirmation() {
+    let server = MockServer::start().await;
+    let hexes = serde_json::json!({"hex": ["deadbeef"]});
+    Mock::given(method("POST"))
+        .and(path("/v1/transactions:deserialize"))
+        .and(body_json(&hexes))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"transactions": [{"hash": "tx-1"}]})),
+        )
+        .mount(&server)
+        .await;
+
+    let home = tempfile::tempdir().expect("tempdir");
+    write_config(home.path(), "");
+    let file = write_json_file(home.path(), "hexes.json", &hexes);
+
+    let output = Command::cargo_bin("lineage")
+        .unwrap()
+        .env("HOME", home.path())
+        .args([
+            "--json",
+            "--network",
+            &server.uri(),
+            "tx",
+            "deserialize",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout["ok"], true);
+    assert_eq!(stdout["data"]["transactions"][0]["hash"], "tx-1");
 }

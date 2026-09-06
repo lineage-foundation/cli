@@ -1,8 +1,10 @@
-//! Remaining write commands: `items` (POST raw items to the mempool) and
-//! `donate` (request a testnet donation from the miner). Neither carries
-//! an amount or address to run the spend guardrails against, so they only
-//! require confirmation (`--yes` or `confirm = "auto"`) via
-//! `guard::confirm`.
+//! Remaining write commands: `items` (POST raw items to the mempool),
+//! `tx submit`/`tx serialize`/`tx deserialize`, and `donate` (request a
+//! testnet donation from the miner). `items`, `tx submit`, and `donate`
+//! carry no amount or address to run the spend guardrails against, so they
+//! only require confirmation (`--yes` or `confirm = "auto"`) via
+//! `guard::confirm`. `tx serialize`/`tx deserialize` are reads-through-POST
+//! and need no confirmation.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -79,6 +81,68 @@ pub async fn donate(profile: &Profile, reporter: &Reporter, target: &str, confir
         Ok(()) => {
             let human = format!("requested a testnet donation to {target}");
             reporter.ok(&serde_json::json!({ "target": target }), &human);
+            ok_code()
+        }
+        Err(err) => report_sdk_error(reporter, &err),
+    }
+}
+
+pub async fn tx_submit(profile: &Profile, reporter: &Reporter, file: &Path, confirmed: bool) -> ExitCode {
+    if let Err(code) = require_confirm(profile, reporter, confirmed) {
+        return code;
+    }
+    let payload = match read_json_file(reporter, file) {
+        Ok(payload) => payload,
+        Err(code) => return code,
+    };
+    // Accept either a single transaction object or an array of them.
+    let txs: Vec<Value> = match payload {
+        Value::Array(txs) => txs,
+        other => vec![other],
+    };
+    let client = match build_client(profile) {
+        Ok(client) => client,
+        Err(err) => return report_sdk_error(reporter, &err),
+    };
+    match client.submit_transactions(&txs).await {
+        Ok(value) => {
+            reporter.ok(&value, &value.to_string());
+            ok_code()
+        }
+        Err(err) => report_sdk_error(reporter, &err),
+    }
+}
+
+pub async fn tx_serialize(profile: &Profile, reporter: &Reporter, file: &Path) -> ExitCode {
+    let payload = match read_json_file(reporter, file) {
+        Ok(payload) => payload,
+        Err(code) => return code,
+    };
+    let client = match build_client(profile) {
+        Ok(client) => client,
+        Err(err) => return report_sdk_error(reporter, &err),
+    };
+    match client.serialize_transactions(payload).await {
+        Ok(value) => {
+            reporter.ok(&value, &value.to_string());
+            ok_code()
+        }
+        Err(err) => report_sdk_error(reporter, &err),
+    }
+}
+
+pub async fn tx_deserialize(profile: &Profile, reporter: &Reporter, file: &Path) -> ExitCode {
+    let payload = match read_json_file(reporter, file) {
+        Ok(payload) => payload,
+        Err(code) => return code,
+    };
+    let client = match build_client(profile) {
+        Ok(client) => client,
+        Err(err) => return report_sdk_error(reporter, &err),
+    };
+    match client.deserialize_transactions(payload).await {
+        Ok(value) => {
+            reporter.ok(&value, &value.to_string());
             ok_code()
         }
         Err(err) => report_sdk_error(reporter, &err),

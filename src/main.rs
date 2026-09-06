@@ -43,6 +43,9 @@ async fn run(cli: Cli) -> ExitCode {
         Command::Entries { key } => commands::read::entries(&profile, &reporter, &key).await,
         Command::Tx { command } => match command {
             TxCommand::Status { hash } => commands::read::tx_status(&profile, &reporter, &hash).await,
+            TxCommand::Submit { file } => commands::write::tx_submit(&profile, &reporter, &file, yes).await,
+            TxCommand::Serialize { file } => commands::write::tx_serialize(&profile, &reporter, &file).await,
+            TxCommand::Deserialize { file } => commands::write::tx_deserialize(&profile, &reporter, &file).await,
         },
         Command::Mining => commands::read::mining(&profile, &reporter).await,
         Command::Debug { node } => commands::read::debug(&profile, &reporter, node).await,

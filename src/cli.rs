@@ -151,6 +151,24 @@ pub enum TxCommand {
         /// Transaction hash
         hash: String,
     },
+
+    /// Submit signed transactions to the mempool
+    Submit {
+        /// Path to a JSON file containing a transaction or an array of transactions
+        file: PathBuf,
+    },
+
+    /// Serialize transactions to their wire hex form
+    Serialize {
+        /// Path to a JSON file containing the transactions payload
+        file: PathBuf,
+    },
+
+    /// Deserialize wire hex transactions back to their JSON form
+    Deserialize {
+        /// Path to a JSON file containing the hex payload
+        file: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
