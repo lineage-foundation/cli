@@ -7,6 +7,7 @@ use crate::config::Profile;
 use crate::exit::Code;
 use crate::output::{render_error, Reporter};
 
+pub mod pay;
 pub mod read;
 pub mod wallet;
 

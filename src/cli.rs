@@ -81,6 +81,15 @@ pub enum Command {
         #[command(subcommand)]
         command: WalletCommand,
     },
+
+    /// Pay an address using the profile's signer backend
+    Pay {
+        /// Recipient address
+        address: String,
+
+        /// Amount in LNGX (decimals accepted)
+        amount: f64,
+    },
 }
 
 #[derive(Subcommand, Debug)]

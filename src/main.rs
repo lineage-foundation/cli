@@ -32,6 +32,8 @@ async fn run(cli: Cli) -> ExitCode {
         }
     };
 
+    let (yes, dry_run) = (cli.yes, cli.dry_run);
+
     match cli.command {
         Command::Supply => commands::read::supply(&profile, &reporter).await,
         Command::Balance { addresses } => commands::read::balance(&profile, &reporter, &addresses).await,
@@ -55,6 +57,9 @@ async fn run(cli: Cli) -> ExitCode {
                 commands::wallet::passphrase(&profile, &reporter, node, &new).await
             }
         },
+        Command::Pay { address, amount } => {
+            commands::pay::run(&profile, &reporter, &address, amount, yes, dry_run).await
+        }
     }
 }
 
