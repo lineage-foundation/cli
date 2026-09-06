@@ -1,0 +1,16 @@
+[package]
+name = "lineage-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lineage"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+lineage-sdk = { git = "https://github.com/lineage-foundation/sdk-rust", branch = "main" }
+
+[dev-dependencies]
+assert_cmd = "2"
