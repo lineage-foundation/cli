@@ -35,6 +35,11 @@ pub enum Confirm {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Profile {
+    /// The profile's name (its key in `Config::profiles`), used e.g. as the
+    /// OS keyring account. Not read from the config file itself; set by
+    /// `Config::resolve`.
+    #[serde(default)]
+    pub name: String,
     pub mempool: String,
     pub storage: String,
     pub miner: String,
@@ -56,6 +61,7 @@ impl Profile {
     /// The built-in `testnet` profile used when no config file exists.
     pub fn testnet() -> Self {
         Self {
+            name: DEFAULT_PROFILE.to_string(),
             mempool: "https://mempool.lineage.to".to_string(),
             storage: "https://storage.lineage.to".to_string(),
             miner: "https://miner.lineage.to".to_string(),
@@ -150,6 +156,7 @@ impl Config {
             .get(key)
             .cloned()
             .ok_or_else(|| ConfigError::UnknownProfile(key.to_string()))?;
+        profile.name = key.to_string();
 
         if let Some(network) = network_override {
             if network == DEFAULT_PROFILE {

@@ -6,7 +6,9 @@ mod cli;
 mod commands;
 mod config;
 mod exit;
+mod guard;
 mod output;
+mod secrets;
 
 use cli::{Cli, Command, TxCommand, WalletCommand};
 use config::{Config, ConfigError, Profile};

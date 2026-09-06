@@ -14,13 +14,12 @@ use crate::cli::NodeArg;
 use crate::config::Profile;
 use crate::exit::Code;
 use crate::output::Reporter;
+use crate::secrets;
 
-/// Resolve the wallet passphrase. Reads `LINEAGE_PASSPHRASE` directly for
-/// now; Task 6 replaces the body with a full resolver (env, then OS
-/// keyring) without changing any call site.
-pub fn read_passphrase() -> Result<String, String> {
-    std::env::var("LINEAGE_PASSPHRASE")
-        .map_err(|_| "LINEAGE_PASSPHRASE is not set".to_string())
+/// Resolve the wallet passphrase: `LINEAGE_PASSPHRASE`, else the OS
+/// keyring entry for this profile.
+pub fn read_passphrase(profile: &Profile) -> Result<String, String> {
+    secrets::passphrase(profile).map_err(|err| err.to_string())
 }
 
 /// The profile's local keystore path, or a usage error if it isn't
@@ -39,7 +38,7 @@ fn resolve_local(profile: &Profile, reporter: &Reporter) -> Result<(PathBuf, Str
         reporter.fail(Code::Usage, &msg, None);
         ExitCode::from(Code::Usage)
     })?;
-    let passphrase = read_passphrase().map_err(|msg| {
+    let passphrase = read_passphrase(profile).map_err(|msg| {
         reporter.fail(Code::Runtime, &msg, None);
         ExitCode::from(Code::Runtime)
     })?;
@@ -140,7 +139,7 @@ pub async fn passphrase(profile: &Profile, reporter: &Reporter, node: NodeArg, n
         Ok(client) => client,
         Err(err) => return report_sdk_error(reporter, &err),
     };
-    let old = match read_passphrase() {
+    let old = match read_passphrase(profile) {
         Ok(old) => old,
         Err(msg) => {
             reporter.fail(Code::Runtime, &msg, None);
