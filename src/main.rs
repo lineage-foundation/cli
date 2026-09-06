@@ -50,7 +50,7 @@ async fn run(cli: Cli) -> ExitCode {
         Command::Mining => commands::read::mining(&profile, &reporter).await,
         Command::Debug { node } => commands::read::debug(&profile, &reporter, node).await,
         Command::Wallet { command } => match command {
-            WalletCommand::New => commands::wallet::new(&profile, &reporter).await,
+            WalletCommand::New { force } => commands::wallet::new(&profile, &reporter, force).await,
             WalletCommand::Address => commands::wallet::address(&profile, &reporter).await,
             WalletCommand::List => commands::wallet::list(&profile, &reporter).await,
             WalletCommand::Import { node, file } => {

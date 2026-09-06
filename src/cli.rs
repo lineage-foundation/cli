@@ -107,7 +107,11 @@ pub enum Command {
 #[derive(Subcommand, Debug)]
 pub enum WalletCommand {
     /// Create a new local wallet keystore at the profile's `wallet_path`
-    New,
+    New {
+        /// Overwrite an existing keystore at that path (destroys its keys)
+        #[arg(long)]
+        force: bool,
+    },
 
     /// Generate and persist a new address in the local wallet
     Address,

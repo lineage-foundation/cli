@@ -45,11 +45,22 @@ fn resolve_local(profile: &Profile, reporter: &Reporter) -> Result<(PathBuf, Str
     Ok((path.to_path_buf(), passphrase))
 }
 
-pub async fn new(profile: &Profile, reporter: &Reporter) -> ExitCode {
+pub async fn new(profile: &Profile, reporter: &Reporter, force: bool) -> ExitCode {
     let (path, passphrase) = match resolve_local(profile, reporter) {
         Ok(pair) => pair,
         Err(code) => return code,
     };
+    if path.exists() && !force {
+        reporter.fail(
+            Code::Denied,
+            &format!(
+                "a wallet already exists at {}; refusing to overwrite (use --force to replace it)",
+                path.display()
+            ),
+            None,
+        );
+        return ExitCode::from(Code::Denied);
+    }
     match Wallet::create(&path, &passphrase) {
         Ok(_) => {
             let data = json!({ "wallet_path": path });

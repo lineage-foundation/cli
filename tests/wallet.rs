@@ -76,6 +76,31 @@ fn wallet_new_then_address_produces_a_keystore_and_a_hex_address() {
     assert!(address.chars().all(|c| c.is_ascii_hexdigit()));
 }
 
+#[test]
+fn wallet_new_refuses_to_overwrite_without_force() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let wallet_path: PathBuf = home.path().join("wallet.json");
+    write_config(home.path(), &wallet_path);
+
+    let run_new = |extra: &[&str]| {
+        let mut args = vec!["--json", "wallet", "new"];
+        args.extend_from_slice(extra);
+        Command::cargo_bin("lineage")
+            .unwrap()
+            .env("HOME", home.path())
+            .env("LINEAGE_PASSPHRASE", "test-passphrase")
+            .args(&args)
+            .assert()
+    };
+
+    // First create succeeds.
+    run_new(&[]).success();
+    // Second create without --force is denied (exit code 3), keystore preserved.
+    run_new(&[]).failure().code(3);
+    // With --force it replaces the keystore.
+    run_new(&["--force"]).success();
+}
+
 #[tokio::test]
 async fn wallet_refresh_posts_addresses_to_the_running_total_endpoint() {
     let server = MockServer::start().await;
