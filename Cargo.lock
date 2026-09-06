@@ -746,6 +746,8 @@ dependencies = [
  "assert_cmd",
  "clap",
  "lineage-sdk",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

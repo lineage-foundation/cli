@@ -11,6 +11,8 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 lineage-sdk = { git = "https://github.com/lineage-foundation/sdk-rust", branch = "main" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

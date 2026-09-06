@@ -1,6 +1,8 @@
 use clap::Parser;
 
 mod cli;
+mod exit;
+mod output;
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
