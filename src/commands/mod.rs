@@ -10,6 +10,7 @@ use crate::output::{render_error, Reporter};
 pub mod pay;
 pub mod read;
 pub mod wallet;
+pub mod write;
 
 /// Build an SDK client from a resolved profile's hosts and (optional)
 /// API key.

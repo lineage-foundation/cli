@@ -134,6 +134,22 @@ pub async fn import(profile: &Profile, reporter: &Reporter, node: NodeArg, file:
     }
 }
 
+pub async fn refresh(profile: &Profile, reporter: &Reporter, node: NodeArg, addresses: &[String]) -> ExitCode {
+    let client = match build_client(profile) {
+        Ok(client) => client,
+        Err(err) => return report_sdk_error(reporter, &err),
+    };
+    let class: NodeClass = node.into();
+    let body = json!({ "addresses": addresses });
+    match client.refresh_running_total(class, body).await {
+        Ok(value) => {
+            reporter.ok(&value, &value.to_string());
+            ok_code()
+        }
+        Err(err) => report_sdk_error(reporter, &err),
+    }
+}
+
 pub async fn passphrase(profile: &Profile, reporter: &Reporter, node: NodeArg, new: &str) -> ExitCode {
     let client = match build_client(profile) {
         Ok(client) => client,

@@ -56,10 +56,15 @@ async fn run(cli: Cli) -> ExitCode {
             WalletCommand::Passphrase { node, new } => {
                 commands::wallet::passphrase(&profile, &reporter, node, &new).await
             }
+            WalletCommand::Refresh { node, addresses } => {
+                commands::wallet::refresh(&profile, &reporter, node, &addresses).await
+            }
         },
         Command::Pay { address, amount } => {
             commands::pay::run(&profile, &reporter, &address, amount, yes, dry_run).await
         }
+        Command::Items { file } => commands::write::items(&profile, &reporter, &file, yes).await,
+        Command::Donate { target } => commands::write::donate(&profile, &reporter, &target, yes).await,
     }
 }
 

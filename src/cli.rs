@@ -90,6 +90,18 @@ pub enum Command {
         /// Amount in LNGX (decimals accepted)
         amount: f64,
     },
+
+    /// Submit raw items (e.g. transactions or blocks) to the mempool's item store
+    Items {
+        /// Path to a JSON file containing the items payload
+        file: PathBuf,
+    },
+
+    /// Request a testnet donation from the miner
+    Donate {
+        /// Target address (or node ip:port) to receive the donation
+        target: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -119,6 +131,16 @@ pub enum WalletCommand {
 
         /// The new passphrase
         new: String,
+    },
+
+    /// Refresh a node wallet's running total
+    Refresh {
+        /// Which node's wallet to refresh
+        node: NodeArg,
+
+        /// Addresses to refresh (omit to refresh all)
+        #[arg(num_args = 0..)]
+        addresses: Vec<String>,
     },
 }
 

@@ -10,6 +10,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use assert_cmd::Command;
+use wiremock::matchers::{body_json, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// Write a config file under `home/.config/lineage/config.toml` (Linux
 /// layout) and `home/Library/Application Support/lineage/config.toml`
@@ -72,4 +74,39 @@ fn wallet_new_then_address_produces_a_keystore_and_a_hex_address() {
     let address = stdout["data"]["address"].as_str().expect("address string");
     assert_eq!(address.len(), 64, "address should be a 64-char hex string");
     assert!(address.chars().all(|c| c.is_ascii_hexdigit()));
+}
+
+#[tokio::test]
+async fn wallet_refresh_posts_addresses_to_the_running_total_endpoint() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/wallet/running-total:refresh"))
+        .and(body_json(serde_json::json!({"addresses": ["addr-a"]})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"running_total": 42})))
+        .mount(&server)
+        .await;
+
+    let home = tempfile::tempdir().expect("tempdir");
+    let wallet_path: PathBuf = home.path().join("wallet.json");
+    write_config(home.path(), &wallet_path);
+
+    let output = Command::cargo_bin("lineage")
+        .unwrap()
+        .env("HOME", home.path())
+        .args([
+            "--json",
+            "--network",
+            &server.uri(),
+            "wallet",
+            "refresh",
+            "miner",
+            "addr-a",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout["ok"], true);
+    assert_eq!(stdout["data"]["running_total"], 42);
 }

@@ -55,6 +55,19 @@ pub fn check(
     check_in(&dir, profile, to, amount_lngx, confirm_flag)
 }
 
+/// Require confirmation for a write that carries no amount (`items`, `tx
+/// submit`, `donate`): `--yes` or `confirm = "auto"` on the profile. Runs
+/// none of the amount-based guardrails (`allowlist`, `max_amount`,
+/// `daily_cap`) since there is no address or amount to check them against.
+pub fn confirm(profile: &Profile, confirm_flag: bool) -> Result<(), Denied> {
+    if !confirm_flag && profile.confirm != Confirm::Auto {
+        return Err(denied(
+            "confirmation required: pass --yes or set confirm = \"auto\" on the profile",
+        ));
+    }
+    Ok(())
+}
+
 /// The directory the daily spend tally is persisted under:
 /// `dirs::config_dir()/lineage`. Falls back to the current directory if
 /// the OS has no notion of a config directory.
@@ -261,5 +274,28 @@ mod tests {
     fn denied_maps_to_the_denied_exit_code() {
         let denied = denied("nope");
         assert_eq!(Code::from(denied), Code::Denied);
+    }
+
+    #[test]
+    fn confirm_rejects_without_yes_on_a_manual_profile() {
+        let profile = profile_with(|p| p.confirm = Confirm::Manual);
+
+        let result = confirm(&profile, false);
+
+        assert!(matches!(result, Err(Denied { .. })));
+    }
+
+    #[test]
+    fn confirm_accepts_the_yes_flag_on_a_manual_profile() {
+        let profile = profile_with(|p| p.confirm = Confirm::Manual);
+
+        assert_eq!(confirm(&profile, true), Ok(()));
+    }
+
+    #[test]
+    fn confirm_accepts_an_auto_confirm_profile_without_the_yes_flag() {
+        let profile = profile_with(|p| p.confirm = Confirm::Auto);
+
+        assert_eq!(confirm(&profile, false), Ok(()));
     }
 }
