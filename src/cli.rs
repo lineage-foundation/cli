@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser, Debug)]
 #[command(name = "lineage", version, about = "Lineage CLI")]
@@ -35,4 +35,68 @@ pub struct Cli {
 pub enum Command {
     /// Query the current token supply
     Supply,
+
+    /// Look up balances for one or more addresses
+    Balance {
+        /// Addresses to look up
+        #[arg(required = true, num_args = 1..)]
+        addresses: Vec<String>,
+    },
+
+    /// Fetch blocks: the latest block, a single block by number, or a batch
+    Blocks {
+        /// "latest" or a specific block number
+        target: Option<String>,
+
+        /// Comma-separated block numbers to fetch in a batch
+        #[arg(long, value_delimiter = ',', num_args = 1..)]
+        nums: Vec<u64>,
+    },
+
+    /// Fetch a blockchain entry by key
+    Entries {
+        /// Blockchain entry key
+        key: String,
+    },
+
+    /// Transaction-related commands
+    Tx {
+        #[command(subcommand)]
+        command: TxCommand,
+    },
+
+    /// Show the block currently being mined
+    Mining,
+
+    /// Fetch debug information from a node
+    Debug {
+        /// Which node to query
+        node: NodeArg,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TxCommand {
+    /// Look up the status of a transaction by hash
+    Status {
+        /// Transaction hash
+        hash: String,
+    },
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub enum NodeArg {
+    Mempool,
+    Storage,
+    Miner,
+}
+
+impl From<NodeArg> for lineage_sdk::NodeClass {
+    fn from(node: NodeArg) -> Self {
+        match node {
+            NodeArg::Mempool => lineage_sdk::NodeClass::Mempool,
+            NodeArg::Storage => lineage_sdk::NodeClass::Storage,
+            NodeArg::Miner => lineage_sdk::NodeClass::Miner,
+        }
+    }
 }
