@@ -1,0 +1,24 @@
+[package]
+name = "lineage-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lineage"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+lineage-sdk = { git = "https://github.com/lineage-foundation/sdk-rust", branch = "main" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+dirs = "5"
+keyring = { version = "4.2.0", features = ["apple-native-keyring-store"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
+wiremock = "0.6"
+predicates = "3"
