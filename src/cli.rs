@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser, Debug)]
@@ -72,6 +74,42 @@ pub enum Command {
     Debug {
         /// Which node to query
         node: NodeArg,
+    },
+
+    /// Local keystore and node-wallet management
+    Wallet {
+        #[command(subcommand)]
+        command: WalletCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum WalletCommand {
+    /// Create a new local wallet keystore at the profile's `wallet_path`
+    New,
+
+    /// Generate and persist a new address in the local wallet
+    Address,
+
+    /// List addresses held in the local wallet
+    List,
+
+    /// Import keypairs into a node's wallet
+    Import {
+        /// Which node's wallet to import into
+        node: NodeArg,
+
+        /// Path to a JSON file containing the keypairs payload
+        file: PathBuf,
+    },
+
+    /// Change the passphrase of a node's wallet
+    Passphrase {
+        /// Which node's wallet to update
+        node: NodeArg,
+
+        /// The new passphrase
+        new: String,
     },
 }
 

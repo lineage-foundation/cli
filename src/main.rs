@@ -8,7 +8,7 @@ mod config;
 mod exit;
 mod output;
 
-use cli::{Cli, Command, TxCommand};
+use cli::{Cli, Command, TxCommand, WalletCommand};
 use config::{Config, ConfigError, Profile};
 use exit::Code;
 use output::Reporter;
@@ -42,6 +42,17 @@ async fn run(cli: Cli) -> ExitCode {
         },
         Command::Mining => commands::read::mining(&profile, &reporter).await,
         Command::Debug { node } => commands::read::debug(&profile, &reporter, node).await,
+        Command::Wallet { command } => match command {
+            WalletCommand::New => commands::wallet::new(&profile, &reporter).await,
+            WalletCommand::Address => commands::wallet::address(&profile, &reporter).await,
+            WalletCommand::List => commands::wallet::list(&profile, &reporter).await,
+            WalletCommand::Import { node, file } => {
+                commands::wallet::import(&profile, &reporter, node, &file).await
+            }
+            WalletCommand::Passphrase { node, new } => {
+                commands::wallet::passphrase(&profile, &reporter, node, &new).await
+            }
+        },
     }
 }
 
