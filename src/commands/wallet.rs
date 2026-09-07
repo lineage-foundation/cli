@@ -60,6 +60,16 @@ pub async fn new(profile: &Profile, reporter: &Reporter, force: bool) -> ExitCod
         );
         return ExitCode::from(Code::Denied);
     }
+    if let Some(parent) = path.parent() {
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            reporter.fail(
+                Code::Runtime,
+                &format!("could not create wallet directory {}: {err}", parent.display()),
+                None,
+            );
+            return ExitCode::from(Code::Runtime);
+        }
+    }
     match Wallet::create(&path, &passphrase) {
         Ok(_) => {
             let data = json!({ "wallet_path": path });
