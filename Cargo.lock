@@ -1338,7 +1338,7 @@ dependencies = [
 [[package]]
 name = "lineage-sdk"
 version = "0.0.0"
-source = "git+https://github.com/lineage-foundation/sdk-rust?branch=main#b17ccb4aad82346a8e29ee91a82feb5dc41afdb2"
+source = "git+https://github.com/lineage-foundation/sdk-rust?branch=main#0cf9f80737bb6e1d6218451e146ef213ee632b32"
 dependencies = [
  "hex",
  "reqwest",
