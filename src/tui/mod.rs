@@ -99,11 +99,11 @@ async fn event_loop<B: Backend>(profile: &Profile, terminal: &mut Terminal<B>) -
         }
     };
 
-    let addresses = watched_addresses(profile);
     let mut app = App::new(profile.name.clone());
+    app.known_addresses = watched_addresses(profile);
 
     let (tx, mut rx) = mpsc::channel::<FetchMsg>(8);
-    spawn_fetches(&client, &addresses, &tx);
+    spawn_fetches(&client, &app.known_addresses, &tx);
 
     let mut events = EventStream::new();
     let mut ticker = interval(Duration::from_secs(3));
@@ -123,7 +123,7 @@ async fn event_loop<B: Backend>(profile: &Profile, terminal: &mut Terminal<B>) -
 
         tokio::select! {
             _ = ticker.tick() => {
-                spawn_fetches(&client, &addresses, &tx);
+                spawn_fetches(&client, &app.known_addresses, &tx);
             }
             maybe_event = events.next() => {
                 match maybe_event {
@@ -141,7 +141,7 @@ async fn event_loop<B: Backend>(profile: &Profile, terminal: &mut Terminal<B>) -
 
                         if app.refresh_requested {
                             app.refresh_requested = false;
-                            spawn_fetches(&client, &addresses, &tx);
+                            spawn_fetches(&client, &app.known_addresses, &tx);
                         }
 
                         if app.send_step == SendStep::Submitting {
@@ -311,36 +311,47 @@ fn watched_addresses(profile: &Profile) -> Vec<String> {
 
 /// Handle a request (the `n` key) to generate a new address: for a
 /// locally signed profile with a `wallet_path`, opens the keystore,
-/// generates and persists a new address, reports it in the status line,
-/// and requests a refresh so the new (zero-balance) address shows up in
-/// the Wallet tab. Node-signer profiles (or profiles without a local
-/// wallet) have no keystore to add an address to, so they just get a
-/// status message explaining why.
+/// generates and persists a new address, reports it as a persistent
+/// `notice` (unlike `status`, which the next successful refresh clears),
+/// refreshes `known_addresses` from the keystore so the new address is
+/// included in the next fetch, and requests that refresh so the new
+/// (zero-balance) address shows up in the Wallet tab. Node-signer profiles
+/// (or profiles without a local wallet) have no keystore to add an address
+/// to, so they just get a notice explaining why.
 fn handle_new_address_request(profile: &Profile, app: &mut App) {
     if profile.signer != SignerKind::Local {
-        app.status = Some("new address requires a local wallet".to_string());
+        app.notice = Some("new address requires a local wallet".to_string());
         return;
     }
     let Some(wallet_path) = profile.resolved_wallet_path() else {
-        app.status = Some("new address requires a local wallet".to_string());
+        app.notice = Some("new address requires a local wallet".to_string());
         return;
     };
 
     let passphrase = match secrets::passphrase(profile) {
         Ok(passphrase) => passphrase,
         Err(err) => {
-            app.status = Some(format!("new address failed: {err}"));
+            app.notice = Some(format!("new address failed: {err}"));
             return;
         }
     };
 
-    match Wallet::open(&wallet_path, &passphrase).and_then(|mut wallet| wallet.new_address()) {
+    let mut wallet = match Wallet::open(&wallet_path, &passphrase) {
+        Ok(wallet) => wallet,
+        Err(err) => {
+            app.notice = Some(format!("new address failed: {err}"));
+            return;
+        }
+    };
+
+    match wallet.new_address() {
         Ok(address) => {
-            app.status = Some(format!("new address: {address}"));
+            app.notice = Some(format!("new address: {address}"));
+            app.known_addresses = wallet.addresses();
             app.refresh_requested = true;
         }
         Err(err) => {
-            app.status = Some(format!("new address failed: {err}"));
+            app.notice = Some(format!("new address failed: {err}"));
         }
     }
 }
