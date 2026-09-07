@@ -51,24 +51,11 @@ with a write, and drop `--dry-run` to actually submit it.
 
 Settings live in `~/.config/lineage/config.toml` (or the platform
 equivalent — `~/Library/Application Support/lineage/config.toml` on
-macOS). If the file is missing, the CLI falls back to a built-in `testnet`
-profile pointed at the public `*.lineage.to` nodes with node-side signing.
-
-A profile with a local keystore and some guardrails looks like this:
+macOS). On first run, if the file is missing, the CLI writes a default one
+with two profiles: a node-backed `testnet` and a local-signing `local`.
 
 ```toml
-default_profile = "dev"
-
-[profiles.dev]
-mempool = "http://localhost:8081"
-storage = "http://localhost:8082"
-miner   = "http://localhost:8083"
-signer  = "local"
-confirm = "manual"
-wallet_path = "/home/you/.lineage/wallet.json"
-max_amount  = 100.0
-daily_cap   = 500.0
-allowlist   = ["LX1knownaddress..."]
+default_profile = "testnet"
 
 [profiles.testnet]
 mempool = "https://mempool.lineage.to"
@@ -76,13 +63,39 @@ storage = "https://storage.lineage.to"
 miner   = "https://miner.lineage.to"
 signer  = "node"
 confirm = "manual"
+
+[profiles.local]
+mempool = "https://mempool.lineage.to"
+storage = "https://storage.lineage.to"
+miner   = "https://miner.lineage.to"
+signer  = "local"
+confirm = "manual"
+wallet_path = "~/.lineage/wallet.json"
 ```
 
-Pick a profile with `--profile dev`, or point at an arbitrary host with
-`--network <url>` (or `--network testnet` to force the built-in defaults).
-`signer = "local"` signs with the keystore at `wallet_path`; `signer =
-"node"` delegates signing to the target node's own wallet. Either way, the
-passphrase never comes from an interactive prompt — set
+`signer = "node"` delegates signing to the target node's own wallet;
+`signer = "local"` signs with the keystore at `wallet_path`. Because the
+default profile is `testnet` — node-backed, with no `wallet_path` — the
+wallet commands report `profile has no wallet_path configured` unless you
+select a local profile:
+
+```
+lineage --profile local wallet new
+lineage --profile local wallet address
+```
+
+To make local the default (so `--profile` isn't needed each time), set
+`default_profile = "local"`. Reads (`supply`, `balance`, `blocks`) behave
+the same under either profile — both point at the same hosts; only the
+signer differs.
+
+A `wallet_path` may start with `~`, which expands to your home directory,
+and `wallet new` creates the keystore's parent directory if it doesn't
+exist. Profiles may also set guardrails — `max_amount`, `daily_cap`, and
+`allowlist`. Pick any profile with `--profile <name>`, or point at an
+arbitrary host with `--network <url>` (or `--network testnet`).
+
+The passphrase never comes from an interactive prompt — set
 `LINEAGE_PASSPHRASE` in the environment, or store one in the OS keyring
 under the service `lineage` with the profile name as the account.
 
