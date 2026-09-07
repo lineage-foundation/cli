@@ -77,6 +77,24 @@ fn wallet_new_then_address_produces_a_keystore_and_a_hex_address() {
 }
 
 #[test]
+fn wallet_new_creates_a_missing_parent_directory() {
+    let home = tempfile::tempdir().expect("tempdir");
+    // wallet_path lives in a subdirectory that does not exist yet.
+    let wallet_path: PathBuf = home.path().join("nested").join("dir").join("wallet.json");
+    write_config(home.path(), &wallet_path);
+
+    Command::cargo_bin("lineage")
+        .unwrap()
+        .env("HOME", home.path())
+        .env("LINEAGE_PASSPHRASE", "test-passphrase")
+        .args(["--json", "wallet", "new"])
+        .assert()
+        .success();
+
+    assert!(wallet_path.exists(), "keystore should be created with its parent dir");
+}
+
+#[test]
 fn wallet_new_refuses_to_overwrite_without_force() {
     let home = tempfile::tempdir().expect("tempdir");
     let wallet_path: PathBuf = home.path().join("wallet.json");
