@@ -9,6 +9,7 @@ mod exit;
 mod guard;
 mod output;
 mod secrets;
+mod tui;
 
 use cli::{Cli, Command, TxCommand, WalletCommand};
 use config::{Config, ConfigError, Profile};
@@ -68,6 +69,7 @@ async fn run(cli: Cli) -> ExitCode {
         }
         Command::Items { file } => commands::write::items(&profile, &reporter, &file, yes).await,
         Command::Donate { target } => commands::write::donate(&profile, &reporter, &target, yes).await,
+        Command::Tui => tui::run(&profile).await,
     }
 }
 

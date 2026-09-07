@@ -102,6 +102,9 @@ pub enum Command {
         /// Target address (or node ip:port) to receive the donation
         target: String,
     },
+
+    /// Open the full-screen terminal UI (dashboard, wallet, and send)
+    Tui,
 }
 
 #[derive(Subcommand, Debug)]
