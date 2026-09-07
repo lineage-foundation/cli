@@ -22,12 +22,11 @@ pub fn read_passphrase(profile: &Profile) -> Result<String, String> {
     secrets::passphrase(profile).map_err(|err| err.to_string())
 }
 
-/// The profile's local keystore path, or a usage error if it isn't
-/// configured.
-fn require_wallet_path(profile: &Profile) -> Result<&Path, String> {
+/// The profile's local keystore path (with `~` expanded), or a usage error
+/// if it isn't configured.
+fn require_wallet_path(profile: &Profile) -> Result<PathBuf, String> {
     profile
-        .wallet_path
-        .as_deref()
+        .resolved_wallet_path()
         .ok_or_else(|| "profile has no wallet_path configured".to_string())
 }
 
@@ -42,7 +41,7 @@ fn resolve_local(profile: &Profile, reporter: &Reporter) -> Result<(PathBuf, Str
         reporter.fail(Code::Runtime, &msg, None);
         ExitCode::from(Code::Runtime)
     })?;
-    Ok((path.to_path_buf(), passphrase))
+    Ok((path, passphrase))
 }
 
 pub async fn new(profile: &Profile, reporter: &Reporter, force: bool) -> ExitCode {
