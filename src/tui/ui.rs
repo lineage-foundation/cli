@@ -194,10 +194,15 @@ fn draw_send(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let help = "q: quit  Tab/1-3: switch  r: refresh";
-    let text = match &app.status {
-        Some(status) => format!("{help}  |  {status}"),
-        None => help.to_string(),
-    };
+    let mut text = help.to_string();
+    if let Some(notice) = &app.notice {
+        text.push_str("  |  ");
+        text.push_str(notice);
+    }
+    if let Some(status) = &app.status {
+        text.push_str("  |  ");
+        text.push_str(status);
+    }
     let paragraph = Paragraph::new(Line::from(text));
     frame.render_widget(paragraph, area);
 }

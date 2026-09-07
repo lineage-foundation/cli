@@ -43,11 +43,13 @@ pub struct App {
     pub active: Tab,
     pub should_quit: bool,
     pub status: Option<String>,
+    pub notice: Option<String>,
     pub refresh_requested: bool,
     pub head: Option<u64>,
     pub supply: Option<Supply>,
     pub wallet_total_raw: Option<u64>,
     pub wallet_addresses: Vec<(String, u64)>,
+    pub known_addresses: Vec<String>,
     pub new_address_requested: bool,
     pub last_updated: Option<String>,
     pub send_to: String,
@@ -66,11 +68,13 @@ impl App {
             active: Tab::Dashboard,
             should_quit: false,
             status: None,
+            notice: None,
             refresh_requested: false,
             head: None,
             supply: None,
             wallet_total_raw: None,
             wallet_addresses: Vec::new(),
+            known_addresses: Vec::new(),
             new_address_requested: false,
             last_updated: None,
             send_to: String::new(),
@@ -95,21 +99,31 @@ impl App {
         self.wallet_total_raw = Some(total_raw);
     }
 
-    /// Fill `wallet_addresses` from a fetched `BalancesResponse`: each
-    /// address's raw token balance is the sum of its `Token` UTXOs
+    /// Fill `wallet_addresses` from `self.known_addresses` and a fetched
+    /// `BalancesResponse`: every known address is included, even if it is
+    /// absent from the response (a brand-new address has no UTXOs yet, so
+    /// it wouldn't appear in `address_list` at all) — those show a 0
+    /// balance rather than being dropped from the view. For addresses that
+    /// are present, the raw token balance is the sum of their `Token` UTXOs
     /// (non-token UTXO values, if any, are ignored). Also sets
     /// `wallet_total_raw` from the response's total, so callers no longer
     /// need a separate `apply_wallet_total` call.
     pub fn apply_wallet_balances(&mut self, balances: &BalancesResponse) {
-        self.wallet_addresses = balances
-            .balance
-            .address_list
+        self.wallet_addresses = self
+            .known_addresses
             .iter()
-            .map(|(address, utxos)| {
-                let raw: u64 = utxos
-                    .iter()
-                    .filter_map(|utxo| utxo.value.get("Token").and_then(|v| v.as_u64()))
-                    .sum();
+            .map(|address| {
+                let raw: u64 = balances
+                    .balance
+                    .address_list
+                    .get(address)
+                    .map(|utxos| {
+                        utxos
+                            .iter()
+                            .filter_map(|utxo| utxo.value.get("Token").and_then(|v| v.as_u64()))
+                            .sum()
+                    })
+                    .unwrap_or(0);
                 (address.clone(), raw)
             })
             .collect();
@@ -355,6 +369,7 @@ mod tests {
         };
 
         let mut app = App::new("testnet".into());
+        app.known_addresses = vec!["addr-a".to_string()];
         app.apply_wallet_balances(&balances);
 
         assert_eq!(
@@ -362,6 +377,40 @@ mod tests {
             vec![("addr-a".to_string(), 720_720_000u64)]
         );
         assert_eq!(app.wallet_total_raw, Some(720_720_000));
+    }
+
+    #[test]
+    fn apply_wallet_balances_includes_known_addresses_missing_from_response() {
+        use lineage_sdk::models::{BalanceTotals, Balances, BalancesResponse, OutPointRef, Utxo};
+        use std::collections::BTreeMap;
+
+        let mut address_list = BTreeMap::new();
+        address_list.insert(
+            "a".to_string(),
+            vec![Utxo {
+                out_point: OutPointRef {
+                    n: 0,
+                    t_hash: "hash-a".to_string(),
+                },
+                value: serde_json::json!({"Token": 100u64}),
+            }],
+        );
+        let balances = BalancesResponse {
+            balance: Balances {
+                address_list,
+                total: BalanceTotals {
+                    tokens: 100,
+                    items: serde_json::Value::Null,
+                },
+            },
+        };
+
+        let mut app = App::new("testnet".into());
+        app.known_addresses = vec!["a".to_string(), "b".to_string()];
+        app.apply_wallet_balances(&balances);
+
+        assert!(app.wallet_addresses.contains(&("a".to_string(), 100u64)));
+        assert!(app.wallet_addresses.contains(&("b".to_string(), 0u64)));
     }
 
     #[test]
