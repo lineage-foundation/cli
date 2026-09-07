@@ -93,19 +93,29 @@ fn draw_dashboard(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_wallet(frame: &mut Frame, app: &App, area: Rect) {
-    // The live address/balance list is wired in a later task; for now show
-    // a heading and a hint so the tab isn't blank.
-    let lines = vec![
-        Line::from("Wallet"),
-        Line::from(match app.wallet_total_raw {
-            Some(raw) => {
-                let lngx = raw as f64 / lineage_sdk::RAW_PER_LNGX as f64;
-                format!("Total: {lngx:.2} LNGX")
-            }
-            None => "no wallet configured".to_string(),
-        }),
-        Line::from("Press 'r' to refresh."),
-    ];
+    let mut lines: Vec<Line> = vec![Line::from("Wallet")];
+
+    if app.wallet_addresses.is_empty() {
+        lines.push(Line::from(
+            "no addresses (press n / configure wallet_path)",
+        ));
+    } else {
+        for (address, raw) in &app.wallet_addresses {
+            let lngx = *raw as f64 / lineage_sdk::RAW_PER_LNGX as f64;
+            lines.push(Line::from(format!("{address}  {lngx:.2} LNGX")));
+        }
+    }
+
+    lines.push(Line::from(match app.wallet_total_raw {
+        Some(raw) => {
+            let lngx = raw as f64 / lineage_sdk::RAW_PER_LNGX as f64;
+            format!("Total: {lngx:.2} LNGX")
+        }
+        None => "Total: (loading…)".to_string(),
+    }));
+
+    lines.push(Line::from("n: new address  r: refresh"));
+
     let paragraph = Paragraph::new(lines).block(
         Block::default()
             .borders(Borders::ALL)
@@ -221,6 +231,19 @@ mod tests {
         let text = buffer_to_string(terminal.backend().buffer());
         assert!(text.contains("7141"));
         assert!(text.contains("Testnet"));
+    }
+
+    #[test]
+    fn wallet_tab_shows_seeded_address_and_lngx_balance() {
+        let mut app = App::new("testnet".into());
+        app.active = Tab::Wallet;
+        app.wallet_addresses = vec![("addr-a".to_string(), 720_720_000)];
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal.draw(|f| draw(f, &app)).expect("draw");
+        let text = buffer_to_string(terminal.backend().buffer());
+        assert!(text.contains("addr-a"));
+        assert!(text.contains("10.00"));
     }
 
     #[test]

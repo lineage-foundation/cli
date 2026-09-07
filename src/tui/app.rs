@@ -1,5 +1,5 @@
 use crossterm::event::KeyCode;
-use lineage_sdk::models::Supply;
+use lineage_sdk::models::{BalancesResponse, Supply};
 
 use crate::config::Profile;
 
@@ -47,6 +47,8 @@ pub struct App {
     pub head: Option<u64>,
     pub supply: Option<Supply>,
     pub wallet_total_raw: Option<u64>,
+    pub wallet_addresses: Vec<(String, u64)>,
+    pub new_address_requested: bool,
     pub last_updated: Option<String>,
     pub send_to: String,
     pub send_amount: String,
@@ -68,6 +70,8 @@ impl App {
             head: None,
             supply: None,
             wallet_total_raw: None,
+            wallet_addresses: Vec::new(),
+            new_address_requested: false,
             last_updated: None,
             send_to: String::new(),
             send_amount: String::new(),
@@ -91,6 +95,27 @@ impl App {
         self.wallet_total_raw = Some(total_raw);
     }
 
+    /// Fill `wallet_addresses` from a fetched `BalancesResponse`: each
+    /// address's raw token balance is the sum of its `Token` UTXOs
+    /// (non-token UTXO values, if any, are ignored). Also sets
+    /// `wallet_total_raw` from the response's total, so callers no longer
+    /// need a separate `apply_wallet_total` call.
+    pub fn apply_wallet_balances(&mut self, balances: &BalancesResponse) {
+        self.wallet_addresses = balances
+            .balance
+            .address_list
+            .iter()
+            .map(|(address, utxos)| {
+                let raw: u64 = utxos
+                    .iter()
+                    .filter_map(|utxo| utxo.value.get("Token").and_then(|v| v.as_u64()))
+                    .sum();
+                (address.clone(), raw)
+            })
+            .collect();
+        self.wallet_total_raw = Some(balances.balance.total.tokens);
+    }
+
     pub fn set_updated(&mut self, stamp: String) {
         self.last_updated = Some(stamp);
     }
@@ -111,6 +136,7 @@ impl App {
             KeyCode::Char('2') => self.active = Tab::Wallet,
             KeyCode::Char('3') => self.active = Tab::Send,
             KeyCode::Char('r') => self.refresh_requested = true,
+            KeyCode::Char('n') => self.new_address_requested = true,
             _ => {}
         }
     }
@@ -300,6 +326,50 @@ mod tests {
 
         assert_eq!(app.send_to, "a");
         assert_eq!(app.send_amount, "");
+    }
+
+    #[test]
+    fn apply_wallet_balances_sums_token_utxos_per_address() {
+        use lineage_sdk::models::{BalanceTotals, Balances, BalancesResponse, OutPointRef, Utxo};
+        use std::collections::BTreeMap;
+
+        let mut address_list = BTreeMap::new();
+        address_list.insert(
+            "addr-a".to_string(),
+            vec![Utxo {
+                out_point: OutPointRef {
+                    n: 0,
+                    t_hash: "hash-a".to_string(),
+                },
+                value: serde_json::json!({"Token": 720_720_000u64}),
+            }],
+        );
+        let balances = BalancesResponse {
+            balance: Balances {
+                address_list,
+                total: BalanceTotals {
+                    tokens: 720_720_000,
+                    items: serde_json::Value::Null,
+                },
+            },
+        };
+
+        let mut app = App::new("testnet".into());
+        app.apply_wallet_balances(&balances);
+
+        assert_eq!(
+            app.wallet_addresses,
+            vec![("addr-a".to_string(), 720_720_000u64)]
+        );
+        assert_eq!(app.wallet_total_raw, Some(720_720_000));
+    }
+
+    #[test]
+    fn n_key_requests_new_address() {
+        let mut app = App::new("testnet".into());
+        assert!(!app.new_address_requested);
+        app.on_key(KeyCode::Char('n'));
+        assert!(app.new_address_requested);
     }
 
     #[test]

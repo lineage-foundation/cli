@@ -134,6 +134,11 @@ async fn event_loop<B: Backend>(profile: &Profile, terminal: &mut Terminal<B>) -
                             handle_key(&mut app, profile, key.code);
                         }
 
+                        if app.new_address_requested {
+                            app.new_address_requested = false;
+                            handle_new_address_request(profile, &mut app);
+                        }
+
                         if app.refresh_requested {
                             app.refresh_requested = false;
                             spawn_fetches(&client, &addresses, &tx);
@@ -255,7 +260,7 @@ fn apply_fetch(app: &mut App, msg: FetchMsg) {
             app.status = Some(format!("dashboard refresh failed: {err}"));
         }
         FetchMsg::Wallet(Ok(balances)) => {
-            app.apply_wallet_total(balances.balance.total.tokens);
+            app.apply_wallet_balances(&balances);
             app.set_updated(wall_clock_stamp());
         }
         FetchMsg::Wallet(Err(err)) => {
@@ -300,6 +305,42 @@ fn watched_addresses(profile: &Profile) -> Vec<String> {
         Err(err) => {
             eprintln!("lineage tui: failed to open wallet: {err}");
             Vec::new()
+        }
+    }
+}
+
+/// Handle a request (the `n` key) to generate a new address: for a
+/// locally signed profile with a `wallet_path`, opens the keystore,
+/// generates and persists a new address, reports it in the status line,
+/// and requests a refresh so the new (zero-balance) address shows up in
+/// the Wallet tab. Node-signer profiles (or profiles without a local
+/// wallet) have no keystore to add an address to, so they just get a
+/// status message explaining why.
+fn handle_new_address_request(profile: &Profile, app: &mut App) {
+    if profile.signer != SignerKind::Local {
+        app.status = Some("new address requires a local wallet".to_string());
+        return;
+    }
+    let Some(wallet_path) = profile.wallet_path.as_deref() else {
+        app.status = Some("new address requires a local wallet".to_string());
+        return;
+    };
+
+    let passphrase = match secrets::passphrase(profile) {
+        Ok(passphrase) => passphrase,
+        Err(err) => {
+            app.status = Some(format!("new address failed: {err}"));
+            return;
+        }
+    };
+
+    match Wallet::open(wallet_path, &passphrase).and_then(|mut wallet| wallet.new_address()) {
+        Ok(address) => {
+            app.status = Some(format!("new address: {address}"));
+            app.refresh_requested = true;
+        }
+        Err(err) => {
+            app.status = Some(format!("new address failed: {err}"));
         }
     }
 }
