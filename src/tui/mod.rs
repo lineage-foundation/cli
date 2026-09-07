@@ -293,14 +293,14 @@ fn watched_addresses(profile: &Profile) -> Vec<String> {
     if profile.signer != SignerKind::Local {
         return Vec::new();
     }
-    let Some(wallet_path) = profile.wallet_path.as_deref() else {
+    let Some(wallet_path) = profile.resolved_wallet_path() else {
         return Vec::new();
     };
     let passphrase = match secrets::passphrase(profile) {
         Ok(passphrase) => passphrase,
         Err(_) => return Vec::new(),
     };
-    match Wallet::open(wallet_path, &passphrase) {
+    match Wallet::open(&wallet_path, &passphrase) {
         Ok(wallet) => wallet.addresses(),
         Err(err) => {
             eprintln!("lineage tui: failed to open wallet: {err}");
@@ -321,7 +321,7 @@ fn handle_new_address_request(profile: &Profile, app: &mut App) {
         app.status = Some("new address requires a local wallet".to_string());
         return;
     }
-    let Some(wallet_path) = profile.wallet_path.as_deref() else {
+    let Some(wallet_path) = profile.resolved_wallet_path() else {
         app.status = Some("new address requires a local wallet".to_string());
         return;
     };
@@ -334,7 +334,7 @@ fn handle_new_address_request(profile: &Profile, app: &mut App) {
         }
     };
 
-    match Wallet::open(wallet_path, &passphrase).and_then(|mut wallet| wallet.new_address()) {
+    match Wallet::open(&wallet_path, &passphrase).and_then(|mut wallet| wallet.new_address()) {
         Ok(address) => {
             app.status = Some(format!("new address: {address}"));
             app.refresh_requested = true;
@@ -365,8 +365,8 @@ async fn submit_send(client: &Client, profile: &Profile, app: &mut App) {
     let to = app.send_to.clone();
 
     let receipt = match profile.signer {
-        SignerKind::Local => match profile.wallet_path.as_deref() {
-            Some(wallet_path) => submit_local(client, wallet_path, &passphrase, &to, amount_raw).await,
+        SignerKind::Local => match profile.resolved_wallet_path() {
+            Some(wallet_path) => submit_local(client, &wallet_path, &passphrase, &to, amount_raw).await,
             None => {
                 app.send_error = Some("profile has no wallet_path configured".to_string());
                 app.send_step = SendStep::Review;
