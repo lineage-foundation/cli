@@ -52,7 +52,7 @@ pub async fn run(profile: &Profile, reporter: &Reporter, to: &str, amount_lngx: 
 
     let receipt = match profile.signer {
         SignerKind::Local => {
-            let wallet_path = match profile.wallet_path.as_deref() {
+            let wallet_path = match profile.resolved_wallet_path() {
                 Some(path) => path,
                 None => {
                     reporter.fail(Code::Usage, "profile has no wallet_path configured", None);
@@ -66,7 +66,7 @@ pub async fn run(profile: &Profile, reporter: &Reporter, to: &str, amount_lngx: 
                     return Code::Runtime.into();
                 }
             };
-            let mut wallet = match Wallet::open(wallet_path, &passphrase) {
+            let mut wallet = match Wallet::open(&wallet_path, &passphrase) {
                 Ok(wallet) => wallet,
                 Err(err) => return report_sdk_error(reporter, &err),
             };

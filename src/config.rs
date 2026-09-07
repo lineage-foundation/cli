@@ -15,6 +15,42 @@ use serde::Deserialize;
 /// Name of the built-in default profile.
 pub const DEFAULT_PROFILE: &str = "testnet";
 
+/// Contents written to `config.toml` on first run, when no config file
+/// exists yet at the resolved config path.
+pub const DEFAULT_CONFIG_TOML: &str = r#"default_profile = "testnet"
+
+[profiles.testnet]
+mempool = "https://mempool.lineage.to"
+storage = "https://storage.lineage.to"
+miner   = "https://miner.lineage.to"
+signer  = "node"
+confirm = "manual"
+
+[profiles.local]
+mempool = "https://mempool.lineage.to"
+storage = "https://storage.lineage.to"
+miner   = "https://miner.lineage.to"
+signer  = "local"
+confirm = "manual"
+wallet_path = "~/.lineage/wallet.json"
+"#;
+
+/// Expand a leading `~` component to the user's home directory. Only a
+/// *leading* `~` is treated specially (`~` alone, or `~` as the first path
+/// component, e.g. `~/foo`); a `~` anywhere else in the path is left as
+/// literal text. Returns `path` unchanged if the home directory can't be
+/// resolved.
+pub fn expand_tilde(path: &Path) -> PathBuf {
+    let mut components = path.components();
+    match components.next() {
+        Some(std::path::Component::Normal(first)) if first == "~" => match dirs::home_dir() {
+            Some(home) => home.join(components.as_path()),
+            None => path.to_path_buf(),
+        },
+        _ => path.to_path_buf(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SignerKind {
@@ -81,6 +117,12 @@ impl Profile {
         self.storage = url.to_string();
         self.miner = url.to_string();
     }
+
+    /// `wallet_path` with a leading `~` expanded to the home directory, so
+    /// consumers never have to deal with an unexpanded path.
+    pub fn resolved_wallet_path(&self) -> Option<PathBuf> {
+        self.wallet_path.as_ref().map(|path| expand_tilde(path))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -121,11 +163,13 @@ impl fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 impl Config {
-    /// Load the config from `~/.config/lineage/config.toml`, falling back
-    /// to the built-in default when the directory can't be resolved.
+    /// Load the config from `~/.config/lineage/config.toml`. On first run
+    /// (the file doesn't exist yet) a default config is scaffolded there;
+    /// falls back to the built-in default when the config directory can't
+    /// be resolved.
     pub fn load() -> Result<Config, ConfigError> {
         match dirs::config_dir() {
-            Some(dir) => Config::load_from(&dir.join("lineage").join("config.toml")),
+            Some(dir) => Config::load_or_init(&dir.join("lineage").join("config.toml")),
             None => Ok(Config::default()),
         }
     }
@@ -139,6 +183,36 @@ impl Config {
         }
         let contents = fs::read_to_string(path).map_err(|err| ConfigError::Read(err.to_string()))?;
         toml::from_str(&contents).map_err(|err| ConfigError::Parse(err.to_string()))
+    }
+
+    /// Load the config from an explicit path, scaffolding it with
+    /// [`DEFAULT_CONFIG_TOML`] first if it doesn't exist yet. If the
+    /// parent directory or file can't be written (e.g. permissions), falls
+    /// back to the built-in default rather than erroring. Exposed
+    /// separately so tests can point at a tempdir path.
+    pub fn load_or_init(path: &Path) -> Result<Config, ConfigError> {
+        if path.exists() {
+            return Config::load_from(path);
+        }
+        Ok(Config::scaffold_default_at(path))
+    }
+
+    /// Write [`DEFAULT_CONFIG_TOML`] to `path` (creating its parent
+    /// directory first) and parse it back. Any failure along the way — the
+    /// directory can't be created, the file can't be written, or the
+    /// written content somehow fails to parse — falls back to
+    /// `Config::default()` rather than erroring.
+    fn scaffold_default_at(path: &Path) -> Config {
+        let parent_ok = match path.parent() {
+            Some(parent) => fs::create_dir_all(parent).is_ok(),
+            None => true,
+        };
+        if parent_ok && fs::write(path, DEFAULT_CONFIG_TOML).is_ok() {
+            if let Ok(config) = toml::from_str(DEFAULT_CONFIG_TOML) {
+                return config;
+            }
+        }
+        Config::default()
     }
 
     /// Pick a profile by name (or the configured default) and apply an
@@ -291,5 +365,94 @@ mod tests {
 
         let result = config.resolve(Some("nope"), None);
         assert!(matches!(result, Err(ConfigError::UnknownProfile(_))));
+    }
+
+    #[test]
+    fn expand_tilde_expands_leading_tilde_to_home_dir() {
+        let home = dirs::home_dir().expect("home dir available in test env");
+        let expanded = expand_tilde(Path::new("~"));
+        assert_eq!(expanded, home);
+    }
+
+    #[test]
+    fn expand_tilde_expands_leading_tilde_with_subpath_to_home_dir() {
+        let home = dirs::home_dir().expect("home dir available in test env");
+        let expanded = expand_tilde(Path::new("~/.lineage/wallet.json"));
+        assert_eq!(expanded, home.join(".lineage").join("wallet.json"));
+    }
+
+    #[test]
+    fn expand_tilde_leaves_absolute_path_unchanged() {
+        let path = Path::new("/tmp/dev-wallet");
+        assert_eq!(expand_tilde(path), path);
+    }
+
+    #[test]
+    fn expand_tilde_leaves_relative_non_tilde_path_unchanged() {
+        let path = Path::new("some/relative/path");
+        assert_eq!(expand_tilde(path), path);
+    }
+
+    #[test]
+    fn resolved_wallet_path_expands_tilde() {
+        let home = dirs::home_dir().expect("home dir available in test env");
+        let mut profile = Profile::testnet();
+        profile.wallet_path = Some(PathBuf::from("~/.lineage/wallet.json"));
+
+        assert_eq!(
+            profile.resolved_wallet_path(),
+            Some(home.join(".lineage").join("wallet.json"))
+        );
+    }
+
+    #[test]
+    fn resolved_wallet_path_is_none_when_unset() {
+        let profile = Profile::testnet();
+        assert_eq!(profile.resolved_wallet_path(), None);
+    }
+
+    #[test]
+    fn load_or_init_scaffolds_default_config_when_file_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("lineage").join("config.toml");
+        assert!(!path.exists());
+
+        let config = Config::load_or_init(&path).expect("load_or_init");
+
+        assert!(path.exists(), "load_or_init should write the config file");
+        let written = fs::read_to_string(&path).expect("read scaffolded config");
+        assert_eq!(written, DEFAULT_CONFIG_TOML);
+
+        assert_eq!(config.default_profile, "testnet");
+        let testnet = config.profiles.get("testnet").expect("testnet profile");
+        assert_eq!(testnet.signer, SignerKind::Node);
+
+        let local = config.profiles.get("local").expect("local profile");
+        assert_eq!(local.signer, SignerKind::Local);
+        assert_eq!(
+            local.wallet_path,
+            Some(PathBuf::from("~/.lineage/wallet.json"))
+        );
+    }
+
+    #[test]
+    fn load_or_init_loads_existing_file_without_overwriting() {
+        let (_dir, path) = write_config(
+            r#"
+            default_profile = "dev"
+
+            [profiles.dev]
+            mempool = "http://localhost:8081"
+            storage = "http://localhost:8082"
+            miner = "http://localhost:8083"
+            signer = "local"
+            confirm = "manual"
+            "#,
+        );
+
+        let config = Config::load_or_init(&path).expect("load_or_init existing file");
+
+        assert_eq!(config.default_profile, "dev");
+        assert!(config.profiles.contains_key("dev"));
     }
 }
