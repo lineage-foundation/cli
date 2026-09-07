@@ -103,7 +103,7 @@ pub enum Command {
         target: String,
     },
 
-    /// Launch the interactive terminal UI
+    /// Open the full-screen terminal UI (dashboard, wallet, and send)
     Tui,
 }
 

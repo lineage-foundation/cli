@@ -116,3 +116,43 @@ Exit codes follow the same contract regardless of `--json`:
 
 Amounts are given and displayed in whole LNGX (decimals accepted); the
 JSON payload always carries the underlying raw integer alongside it.
+
+## Terminal UI
+
+`lineage tui` opens a full-screen view of whichever profile you'd
+otherwise pass on the command line — good for keeping an eye on the chain
+and sending payments without stringing together individual commands.
+
+```sh
+lineage tui
+lineage tui --profile dev
+```
+
+It has three views:
+
+- **Dashboard** — the current block head, token supply and the issued
+  percentage, your wallet's total balance, and when it was last refreshed.
+- **Wallet** — your local wallet's balance, refreshed alongside the
+  dashboard.
+- **Send** — a guided payment: enter a recipient and amount, review it
+  against the profile's guardrails (allowlist, `max_amount`, `daily_cap`),
+  confirm with a passphrase (masked as you type), then submit. A
+  successful send shows the transaction hash; anything a guardrail
+  rejects is shown inline rather than failing silently.
+
+Data refreshes on a timer, or on demand:
+
+| key | action |
+|-----|--------|
+| `Tab` | cycle Dashboard → Wallet → Send |
+| `1` / `2` / `3` | jump to a view directly |
+| `r` | refresh dashboard and wallet data |
+| `Enter` | advance the Send form (fill in → review → confirm → submit) |
+| `Esc` | step back, or cancel out of the Send form |
+| `q` | quit |
+
+The same profile, signer, and guardrails as the rest of the CLI apply:
+`signer = "node"` submits through the target node's own wallet, `signer =
+"local"` signs with the keystore at `wallet_path`, and the passphrase
+comes from `LINEAGE_PASSPHRASE` or the OS keyring before the Confirm step
+falls back to asking for one.
