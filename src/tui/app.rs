@@ -1,6 +1,8 @@
 use crossterm::event::KeyCode;
 use lineage_sdk::models::Supply;
 
+use crate::config::Profile;
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Tab {
     Dashboard,
@@ -18,6 +20,24 @@ impl Tab {
     }
 }
 
+/// Steps of the send flow: fill in the form, review the guardrail-checked
+/// amount, confirm with a passphrase, submit, and show the receipt.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum SendStep {
+    Form,
+    Review,
+    Confirm,
+    Submitting,
+    Done,
+}
+
+/// Which send-form field currently receives typed input.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum SendFocus {
+    To,
+    Amount,
+}
+
 pub struct App {
     pub profile_name: String,
     pub active: Tab,
@@ -28,6 +48,13 @@ pub struct App {
     pub supply: Option<Supply>,
     pub wallet_total_raw: Option<u64>,
     pub last_updated: Option<String>,
+    pub send_to: String,
+    pub send_amount: String,
+    pub send_step: SendStep,
+    pub send_focus: SendFocus,
+    pub send_passphrase: String,
+    pub send_error: Option<String>,
+    pub send_receipt: Option<String>,
 }
 
 impl App {
@@ -42,6 +69,13 @@ impl App {
             supply: None,
             wallet_total_raw: None,
             last_updated: None,
+            send_to: String::new(),
+            send_amount: String::new(),
+            send_step: SendStep::Form,
+            send_focus: SendFocus::To,
+            send_passphrase: String::new(),
+            send_error: None,
+            send_receipt: None,
         }
     }
 
@@ -80,6 +114,80 @@ impl App {
             _ => {}
         }
     }
+
+    /// Append a typed character to whichever send-form field has focus.
+    pub fn send_input_char(&mut self, c: char) {
+        match self.send_focus {
+            SendFocus::To => self.send_to.push(c),
+            SendFocus::Amount => self.send_amount.push(c),
+        }
+    }
+
+    /// Remove the last character from the focused send-form field.
+    pub fn send_backspace(&mut self) {
+        match self.send_focus {
+            SendFocus::To => {
+                self.send_to.pop();
+            }
+            SendFocus::Amount => {
+                self.send_amount.pop();
+            }
+        }
+    }
+
+    /// Toggle input focus between the recipient and amount fields.
+    pub fn send_field_next(&mut self) {
+        self.send_focus = match self.send_focus {
+            SendFocus::To => SendFocus::Amount,
+            SendFocus::Amount => SendFocus::To,
+        };
+    }
+
+    /// Advance the send flow from `Form` to `Review`: validates the
+    /// recipient and amount, then runs them past the profile's guardrails
+    /// (the TUI's review + confirm step stands in for `--yes`). On success
+    /// moves to `Review` and returns the parsed LNGX amount; on any
+    /// failure sets `send_error`, stays in `Form`, and returns `None`.
+    pub fn send_advance(&mut self, profile: &Profile) -> Option<f64> {
+        if self.send_step != SendStep::Form {
+            return None;
+        }
+
+        if self.send_to.trim().is_empty() {
+            self.send_error = Some("recipient address is required".to_string());
+            return None;
+        }
+
+        let amount = match self.send_amount.trim().parse::<f64>() {
+            Ok(value) if value > 0.0 => value,
+            _ => {
+                self.send_error = Some("amount must be a positive number".to_string());
+                return None;
+            }
+        };
+
+        match crate::guard::check(profile, &self.send_to, amount, true) {
+            Ok(()) => {
+                self.send_error = None;
+                self.send_step = SendStep::Review;
+                Some(amount)
+            }
+            Err(denied) => {
+                self.send_error = Some(denied.reason);
+                None
+            }
+        }
+    }
+
+    /// Step the send flow back toward `Form`, clearing any error.
+    pub fn send_back(&mut self) {
+        self.send_step = match self.send_step {
+            SendStep::Review => SendStep::Form,
+            SendStep::Confirm => SendStep::Review,
+            other => other,
+        };
+        self.send_error = None;
+    }
 }
 
 #[cfg(test)]
@@ -117,5 +225,92 @@ mod tests {
         assert_eq!(app.head, Some(7141));
         assert_eq!(app.wallet_total_raw, Some(720_720_000));
         assert_eq!(app.supply_pct(), Some(25.0));
+    }
+
+    // `Profile::testnet()` has no `max_amount`/`daily_cap` set, so
+    // `guard::check` never touches the on-disk daily tally here.
+
+    #[test]
+    fn send_advance_moves_to_review_when_guard_allows() {
+        let mut app = App::new("testnet".into());
+        app.send_to = "addr-a".into();
+        app.send_amount = "10".into();
+        let profile = Profile::testnet();
+
+        let amount = app.send_advance(&profile);
+
+        assert_eq!(amount, Some(10.0));
+        assert_eq!(app.send_step, SendStep::Review);
+        assert_eq!(app.send_error, None);
+    }
+
+    #[test]
+    fn send_advance_denied_by_guard_stays_in_form_with_reason() {
+        let mut app = App::new("testnet".into());
+        app.send_to = "addr-a".into();
+        app.send_amount = "20".into();
+        let mut profile = Profile::testnet();
+        profile.max_amount = Some(5.0);
+
+        let amount = app.send_advance(&profile);
+
+        assert_eq!(amount, None);
+        assert_eq!(app.send_step, SendStep::Form);
+        assert!(app.send_error.is_some());
+    }
+
+    #[test]
+    fn send_advance_requires_a_recipient() {
+        let mut app = App::new("testnet".into());
+        app.send_to = "".into();
+        app.send_amount = "10".into();
+        let profile = Profile::testnet();
+
+        let amount = app.send_advance(&profile);
+
+        assert_eq!(amount, None);
+        assert_eq!(app.send_step, SendStep::Form);
+        assert!(app.send_error.is_some());
+    }
+
+    #[test]
+    fn send_advance_requires_a_positive_numeric_amount() {
+        let mut app = App::new("testnet".into());
+        app.send_to = "addr-a".into();
+        app.send_amount = "not-a-number".into();
+        let profile = Profile::testnet();
+
+        let amount = app.send_advance(&profile);
+
+        assert_eq!(amount, None);
+        assert_eq!(app.send_step, SendStep::Form);
+        assert!(app.send_error.is_some());
+    }
+
+    #[test]
+    fn send_field_next_toggles_focus_and_input_targets_it() {
+        let mut app = App::new("testnet".into());
+        assert_eq!(app.send_focus, SendFocus::To);
+
+        app.send_input_char('a');
+        app.send_field_next();
+        assert_eq!(app.send_focus, SendFocus::Amount);
+        app.send_input_char('5');
+        app.send_backspace();
+
+        assert_eq!(app.send_to, "a");
+        assert_eq!(app.send_amount, "");
+    }
+
+    #[test]
+    fn send_back_steps_toward_form_and_clears_error() {
+        let mut app = App::new("testnet".into());
+        app.send_step = SendStep::Review;
+        app.send_error = Some("stale".into());
+
+        app.send_back();
+
+        assert_eq!(app.send_step, SendStep::Form);
+        assert_eq!(app.send_error, None);
     }
 }
