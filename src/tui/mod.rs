@@ -1,4 +1,5 @@
 pub mod app;
+pub mod fetch;
 
 /// Entry point for `lineage tui`. This is a stub for now: terminal setup,
 /// the event loop, and teardown are implemented once the `App` state
